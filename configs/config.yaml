@@ -1,0 +1,106 @@
+# Shared configuration for both project_notebook_local.ipynb and
+# project_notebook_colab.ipynb. Loaded via src/utils.py -> load_config().
+#
+# Paths are relative to this repo's root, where both notebooks live.
+# data.num_workers below is a conservative shared default; each notebook's
+# Environment cell overrides it for its own context right after loading
+# this file (8 locally, 2 on Colab).
+
+seed: 42
+
+data:
+  salicon_id: "1r0KX4hsfgyhU8nqjCDllMMorByagzMxB"   # Google Drive file ID, used only if the local copy is missing
+  salicon_root: "data/salicon"
+  mit1003_root: "data/mit1003"
+  img_size: 256
+  batch_size: 16          # drop to 8 if the fusion tiers run out of GPU memory
+  num_workers: 2          # conservative shared default; overridden per notebook (see above)
+  augment: true            # random horizontal flip only
+  preserve_aspect_ratio: true   # letterbox resize (pad to square) instead of squashing to
+                                 # img_size x img_size, which would distort non-square images
+
+model:
+  # one of: base_resnet | intermediate_fusion | advanced_transformer
+  name: "base_resnet"
+  backbone: "resnet34"    # base_resnet: resnet18/34 | intermediate_fusion: resnet34/50
+                            # advanced_transformer: pvt_v2_b0 / swin_tiny_patch4_window7_224
+  pretrained: true
+  out_indices: [2, 3, 4]   # encoder stages fused (intermediate/advanced only)
+  use_skip_connections: true   # U-Net-style skip connections from encoder to decoder
+
+  use_center_bias: true      # learned Gaussian-initialized prior added pre-sigmoid,
+                             # since human fixations are heavily center-biased
+  center_bias_grid: 16       # resolution of the learned prior before upsampling to img_size
+
+  use_output_smoothing: true  # Gaussian-blur the predicted map post-sigmoid, matching the
+                               # blur already present in the ground-truth fixation maps
+  smoothing_kernel: 15         # blur kernel size in pixels, must be odd
+  smoothing_sigma: 3.0          # blur sigma in pixels, at img_size=256
+  smoothing_learnable: false    # let training adjust sigma instead of fixing it
+
+train:
+  epochs: 40
+  lr: 0.001
+  encoder_lr_mult: 0.1    # pretrained encoder trains at lr * this; randomly-initialized
+                          # decoder/heads train at the full lr
+  optimizer: "adam"
+  weight_decay: 0.0001
+
+  scheduler:
+    type: "cosine"        # none | cosine | plateau
+    warmup_epochs: 1
+    min_lr_ratio: 0.01
+
+  loss: "kldiv_cc"        # recommended objective; also the default if this key is missing
+  kldiv_weight: 1.0
+  cc_weight: 0.5
+  # Weight on the auxiliary per-depth deep-supervision term, averaged over branches
+  # before this multiplies them (DVA, Wang & Shen, TIP'18, Eq. 9).
+  aux_weight: 1.0
+
+  checkpoint_dir: "checkpoints"
+  checkpoint_every: 5
+  resume_from: null
+
+  early_stopping_patience: 7
+  early_stopping_min_delta: 0.0001
+
+logging:
+  use_wandb: false
+  project_name: "saliency-nndl-project"
+
+# ---------------------------------------------------------------------------
+# Observer-agreement extension: predicts inter-observer disagreement
+# (Jensen-Shannon divergence over MIT1003 per-observer fixation records) as a
+# second head, orthogonal to the standard saliency map.
+# ---------------------------------------------------------------------------
+agreement:
+  # Checkpoint from stage 1 that head B trains on top of; set per tier by the
+  # notebook, left null here for the command-line entry point.
+  base_checkpoint: null
+  freeze_base: true       # keeps MIT1003 a clean generalization test for head A
+
+  image_dir: "data/mit1003/images"
+  map_dir: "data/mit1003/maps"
+  targets_path: "cache/agreement_mit1003.npz"
+  target_key: "js_excess"   # js_excess | js_observed | ioc_nss
+
+  head_mode: "scalar"     # scalar | dense
+  head_hidden: 64
+  head_dropout: 0.2
+  grid: 64                # must match GRID in src/agreement_targets.py
+
+  lr: 0.001
+  weight_decay: 0.0001
+  epochs: 40
+  loss: "beta_nll"        # mse | gaussian | beta_nll
+  beta: 0.5
+  early_stopping_patience: 10
+
+  n_folds: 5
+  fold_seed: 42
+
+  checkpoint_dir: "checkpoints/agreement"
+
+  heteroscedastic: false
+  gate_init: 0.0

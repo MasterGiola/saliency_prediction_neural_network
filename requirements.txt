@@ -1,0 +1,26 @@
+torch==2.3.0
+torchvision==0.18.0
+# Not pinned upstream, only pulled in transitively by torchvision — pinned
+# explicitly since src/data.py and src/visualize.py import it directly.
+pillow==10.3.0
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.8.4
+pyyaml==6.0.1
+tqdm==4.66.2
+timm==1.0.3
+gdown==5.2.0
+requests==2.31.0
+
+# Used by the agreement work (src/train_agreement.py): scipy for loadmat
+# (MIT1003 .mat files), spearmanr (every reported rho), and gaussian_filter
+# (density rendering); scikit-learn and opencv for the three-feature Ridge
+# baseline (edge density, colour spread, and opencv's Haar cascade for the
+# face-area term — without opencv that feature is a constant zero, which
+# weakens the baseline and flatters the model).
+scipy==1.13.0
+scikit-learn==1.4.2
+opencv-python-headless==4.9.0.80
+
+# optional, uncomment if used
+# wandb==0.17.0
